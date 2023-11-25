@@ -1,0 +1,14 @@
+incomplete
+consturcotr for join 
+closest_preceding_node / between
+
+
+FIND_SUCCESSOR - find successor and return endpoint to from
+
+
+
+client commands:
+
+get     <key>
+delete  <key>
+insert  <key> <value>
