@@ -1,16 +1,19 @@
 #include "Chord_Server.h"
 
-int ChordNode::find_successor(u32 key, endpoint *original)
+endpoint *ChordNode::find_successor(u32 key, endpoint *original)
 {
+
+    if (this->id == key)
+        return &this->address;
 
     requestParams params;
     params.from = original;
     params.key = key;
     params.type = requestType::FIND_SUCCESSOR;
 
-    endpoint *to;
+    endpoint *to = nullptr ;
 
-    if (between(key, id, fingers[0].address->id))
+    if (fingers[0].address && between(key, id, fingers[0].address->id))
     {
         to = fingers[0].address;
     }
@@ -18,23 +21,27 @@ int ChordNode::find_successor(u32 key, endpoint *original)
     {
         to = closest_preceding_node(key);
     }
+    if (!to || this->address == *to)
+        return to;
 
-    return send(to, params);
+    return (endpoint *)request(to, params);
 }
 
 // incomplete
 endpoint *ChordNode::closest_preceding_node(u32 key)
 {
-
-    endpoint *closest;
     for (u8 i = m_bits - 1; i >= 0; i--)
     {
+        if (fingers[i].address != nullptr && between(fingers[i].address->id, this->id, key))
+        {
+            return fingers[i].address;
+        }
     }
 
-    return closest;
+    return nullptr;
 }
 
-ChordNode::ChordNode(u32 port_, u32 ip_) : id(hash(port_, ip_)), fingers(fingerTable(id))
+ChordNode::ChordNode(u32 ip_, u32 port_) : id(sha1_hash(port_, ip_)), fingers(fingerTable(id))
 {
     this->address.port = port_;
     this->address.ip = ip_;
@@ -43,7 +50,7 @@ ChordNode::ChordNode(u32 port_, u32 ip_) : id(hash(port_, ip_)), fingers(fingerT
     fingers[0].address = &this->address;
 }
 
-ChordNode::ChordNode(u32 port_, u32 ip_, endpoint *other) : id(hash(port_, ip_)), fingers(fingerTable(id))
+ChordNode::ChordNode(u32 ip_, u32 port_, endpoint *other) : id(sha1_hash(port_, ip_)), fingers(fingerTable(id))
 {
     this->address.port = port_;
     this->address.ip = ip_;
@@ -54,33 +61,37 @@ ChordNode::ChordNode(u32 port_, u32 ip_, endpoint *other) : id(hash(port_, ip_))
     params.from = &this->address;
     params.key = this->id;
     params.type = requestType::FIND_SUCCESSOR;
-    fingers[0].address = (endpoint *)receive(other, params);
+    fingers[0].address = (endpoint *)request(other, params);
+}
+
+void *ChordNode::request(endpoint *to, requestParams type)
+{
+    return nullptr;
 }
 
 bool ChordNode::between(u32 key, u32 start, u32 end)
 {
     if (start <= end)
     {
-        return key > start && key <= end;
+        return key >= start && key <= end;
     }
     else
     {
-        return key > start || key <= end;
+        return key >= start || key <= end;
     }
 }
 
-string u32_to_string(u32 ipAddressInteger);
-u32 ChordNode::hash(u32 port_, u32 &ip)
+u32 ChordNode::clockw_dist(u32 key1, u32 key2)
 {
-    unsigned char hash[SHA_DIGEST_LENGTH];
-    std::string s = u32_to_string(ip) + " " + to_string(port_);
-
-    SHA1(reinterpret_cast<const unsigned char *>(s.c_str()), s.length(), hash);
-
-    u32 key = (*(u32 *)hash) & mod;
-    return key;
+    return u32();
 }
 
+u32 ChordNode::cclockw_dist(u32 key1, u32 key2)
+{
+    return u32();
+}
+
+string u32_to_string(u32 ipAddressInteger);
 void ChordNode::stabilize()
 {
     requestParams params;
@@ -91,9 +102,9 @@ void ChordNode::stabilize()
     if (s == nullptr)
         return;
 
-    auto x = (endpoint *)receive(s, params);
+    auto x = (endpoint *)request(s, params);
 
-    if (x != nullptr && between(x->id, id, s->id))
+    if (x != nullptr && between(x->id, id, s->id) && x->id!=this->id && x->id != s->id)
     {
         s->id = x->id;
         s->port = x->port;
@@ -109,13 +120,11 @@ void ChordNode::fig_fingers()
 
     next = (next + 1) & mod;
 
-    requestParams params;
-    params.type = requestType::FIND_SUCCESSOR;
-    params.key = fingers[next].start;
-    params.from = &this->address;
+    endpoint *res = find_successor(fingers[next].start,&this->address);
 
-    endpoint *res = (endpoint *)receive(&this->address, params);
-
+    if(fingers[next].address == nullptr) {
+        fingers[next].address = (endpoint *)malloc(sizeof(endpoint));
+    }    
     fingers[next].address->id = res->id;
     fingers[next].address->ip = res->ip;
     fingers[next].address->port = res->port;
@@ -144,19 +153,9 @@ void ChordNode::notify(endpoint *successor)
     params.key = this->id;
     params.from = &this->address;
 
-    send(successor, params);
-}
-
-int ChordNode::send(endpoint *to, requestParams type)
-{
-    return 0;
-}
-
-void *ChordNode::receive(endpoint *to, requestParams type)
-{
-    return 0;
-}
-
+    request(successor, params);
+} 
+ 
 u32 string_to_u32(string &ip)
 {
     in_addr ipAddress;
@@ -170,10 +169,21 @@ u32 string_to_u32(string &ip)
     }
 }
 
+u32 sha1_hash(u32 port_, u32 &ip)
+{
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    std::string s = u32_to_string(ip) + " " + to_string(port_);
+
+    SHA1(reinterpret_cast<const unsigned char *>(s.c_str()), s.length(), hash);
+
+    u32 key = (*(u32 *)hash) & mod;
+    return key;
+}
+
 string u32_to_string(u32 ipAddressInteger)
 {
     in_addr ipAddress;
-    ipAddress.s_addr = htonl(ipAddressInteger);
+    ipAddress.s_addr = ipAddressInteger;
 
     char ipAddressString[INET_ADDRSTRLEN];
     if (inet_ntop(AF_INET, &ipAddress, ipAddressString, INET_ADDRSTRLEN) != nullptr)

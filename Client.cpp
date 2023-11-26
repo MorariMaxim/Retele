@@ -6,12 +6,14 @@ using u32 = uint32_t;
 int send_request_to(char *request, u32 ip, u32 port);
 int set_connection_to(u32 ip, u32 port);
 int display_response(int sd);
-
+bool check_exit(char *request);
+void trim(char **str);
 int main(int argc, char *argv[])
 {
+ 
 
     std::signal(SIGPIPE, SIG_IGN);
-    int v = 0;
+    int v = 1;
     u32 port, ip;
     if (!v)
     {
@@ -26,45 +28,52 @@ int main(int argc, char *argv[])
     else
     {
         char ipstring[] = "127.0.0.1";
-        char portstring[] = "2024";
+        char portstring[] = "2025";
 
         port = htons(atoi(portstring));
         ip = inet_addr(ipstring);
     }
 
-    char request[REQUEST_MAXLEN];
+    char *request = (char*)malloc(REQUEST_MAXLEN);
     request[0] = 0;
     int request_len;
 
     int sd = set_connection_to(ip, port);
-    while (1)
-    {
 
-        printf("Enter command : ");
+    char running = 1;
+    char empty_command = 0;
+    while (running)
+    {
+        if (!empty_command)
+            printf("Enter command : ");
         fflush(stdout);
-        bzero(request, sizeof(request));
+        bzero(request, REQUEST_MAXLEN);
         read(0, request, REQUEST_MAXLEN);
         if (request[strlen(request) - 1] == '\n')
             request[strlen(request) - 1] = 0;
+
+        trim(&request);
+        check_exit(request);
 
         request_len = strlen(request);
 
         if (request_len == 0)
         {
+            empty_command = 1;
             printf("\n");
             continue;
         }
+        else
+            empty_command = 0;
 
-        printf("$%s$ len = %d\n", request, request_len);
-        fflush(stdout);
         char type = responseType::REDIRECT;
         char reqtype = requestType::CLIENT_REQUEST;
         while (type == responseType::REDIRECT)
-        {   
+        {
 
             if (write(sd, &reqtype, 1) <= 0)
                 HANDLE_EXIT("error when sending request to server.\n");
-            
+
             if (write(sd, &request_len, 4) <= 0)
                 HANDLE_EXIT("error when sending request to server.\n");
 
@@ -95,13 +104,18 @@ int main(int argc, char *argv[])
                     sd = set_connection_to(redirect_ip, redirect_port);
                 }
             }
-            else
+            else if (type == responseType::OK)
             {
                 display_response(sd);
+            }
+            else if (type == responseType::UNRECOGNIZED)
+            {
+                continue;
             }
         }
     }
 }
+
 int display_response(int sd)
 {
     int response_length;
@@ -134,4 +148,39 @@ int set_connection_to(u32 ip, u32 port)
     if (connect(sd, (struct sockaddr *)&server, sizeof(struct sockaddr)) == -1)
         HANDLE_EXIT("error when calling connect()\n");
     return sd;
+}
+
+bool check_exit(char *request)
+{
+
+    char buffer[] = "exit";
+
+    for (size_t i = 0; i < 4; i++)
+    {
+        if (request[i] == 0)
+            return 0;
+        if (request[i] != buffer[i])
+            return 0;
+    }
+    if (request[4] == ' ' || request[4] == 0)
+        exit(0);
+
+    return 0;
+}
+void trim(char **str)
+{    
+    char *start = *str;
+    while (*start == ' ')
+    {
+        start++;
+    }
+    *str = start;
+
+    char *end = *str + strlen(*str) - 1;
+    while (end > start && *end == ' ')
+    {
+        end--;
+    }
+    
+    *(end + 1) = 0;
 }

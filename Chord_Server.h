@@ -3,7 +3,6 @@
 
 #include "server_client_common.h"
 
-
 using namespace std;
 
 using u32 = uint32_t;
@@ -11,20 +10,22 @@ using u8 = u_char;
 const char m_bits = 10;
 const u32 mod = (1 << m_bits) - 1;
 
-
 class endpoint
 {
 public:
     u32 port;
-    
+
     u32 ip;
     u32 id;
-    endpoint &operator=(const endpoint &other)
+    bool operator==(const endpoint &other)
     {
-        port = other.port;
-        ip = other.ip;
-        id = other.id;
-        return *this;
+        if (port != other.port)
+            return 0;
+        if (ip != other.ip)
+            return 0;
+        if (id != other.id)
+            return 0;
+        return 1;
     }
 };
 
@@ -40,7 +41,7 @@ class fingerTable
     finger fingers[m_bits];
 
     fingerTable(u32 id)
-    {        
+    {
         u32 x = 1;
         for (size_t i = 0; i < m_bits; i++)
         {
@@ -58,13 +59,13 @@ public:
             return fingers[0];
         return fingers[index];
     }
-}; 
+};
 class requestParams
 {
 public:
-    requestType type;    
+    requestType type;
     u32 key;
-    endpoint* from;
+    endpoint *from;
 };
 
 class ChordNode
@@ -81,27 +82,27 @@ class ChordNode
     friend class fingerTable;
 
 public:
-    int find_successor(u32 key, endpoint* original);
+    endpoint *find_successor(u32 key, endpoint *original);
 
     endpoint *closest_preceding_node(u32 key);
 
-    ChordNode(u32 port_, u32 ip_);
+    ChordNode(u32 ip_, u32 port_);
 
-    ChordNode(u32 port_, u32 ip_, endpoint * other);
+    ChordNode(u32 ip_, u32 port_, endpoint *other);
 
-    int send(endpoint *to, requestParams type);
-
-    void *receive(endpoint *to, requestParams type);
+    void* request(endpoint *to, requestParams type);
 
     bool between(u32 key, u32 start, u32 end);
 
-    u32 hash(u32 port_, u32 &ip);
+    u32 clockw_dist(u32 key1, u32 key2);
+
+    u32 cclockw_dist(u32 key1, u32 key2);
 
     void stabilize();
 
-    void notify( endpoint* successor);
+    void notify(endpoint *successor);
 
-    void fig_fingers(); 
+    void fig_fingers();
 
     void run();
 
@@ -110,3 +111,6 @@ public:
 
 #endif
 
+string u32_to_string(u32 ipAddressInteger);
+u32 string_to_u32(string &ip);
+u32 sha1_hash(u32 port_, u32 &ip);

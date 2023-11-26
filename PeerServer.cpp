@@ -1,29 +1,31 @@
-#include "Chord_Server.h" 
+#include "Chord_Server.h"
 
 pthread_t thread_counter = 0;
-char act = 0;
-char *ipString, *portString;
 
-void *treat_client(void *arg);
+void *treat_node(void *arg);
 int open_to_connection(int port, int *sd);
+char try_serve_client(int client, vector<string> args);
+int redirect_to(int client, u32 red_ip, u32 red_port);
+int serve_locally(int client, responseType type, char *response);
 
 int main(int argc, char *argv[])
 {
     std::signal(SIGPIPE, SIG_IGN);
 
-    if (argc < 3)
-        HANDLE_EXIT("Not enough aarguments");
+    ChordNode cn(0,4);
 
+    cn.printfInfo();
+
+    //cout << cn.between(7,8,0);
+    return 0;
+    //if (argc < 2)
+      //HANDLE_EXIT("Not enough aarguments");
+        
+
+    
     int sd;
-    int port = htons(atoi(argv[1]));
-    act = atoi(argv[2]);
-    if (act == 0)
-    {
-        if (argc < 5)
-            HANDLE_EXIT("Not enough aarguments");
-        ipString = argv[3];
-        portString = argv[4];
-    }
+    //int port = htons(atoi(argv[1]));
+    int port = htons(2025); 
 
     open_to_connection(port, &sd);
 
@@ -43,15 +45,15 @@ int main(int argc, char *argv[])
         ti->id = thread_counter++;
         ti->client = client;
 
-        if (pthread_create(&ti->id, NULL, &treat_client, ti) != 0)
-            HANDLE_CONTINUE("error at pthread_create(&thread_counter, NULL, &treat_client, td)");
+        if (pthread_create(&ti->id, NULL, &treat_node, ti) != 0)
+            HANDLE_CONTINUE("error at pthread_create(&thread_counter, NULL, &treat_node, td)");
     }
 }
 
 int open_to_connection(int port, int *sd)
 {
     struct sockaddr_in server;
-    bzero(&server, sizeof(server));
+    bzero(&server, sizeof(server));    
 
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -68,82 +70,48 @@ int open_to_connection(int port, int *sd)
     return 0;
 }
 
-void *treat_client(void *arg)
-{
+void *treat_node(void *arg)
+{ 
     struct threadInfo ti = *(threadInfo *)arg;
-
+    printf("Treating clinet on socket %d\n",ti.client);fflush(stdout);
     pthread_detach(pthread_self());
 
     char request[REQUEST_MAXLEN];
     int request_len;
-    char response[RESPONSE_MAXLEN];
-    int response_len;
 
-    while (1)
+    char keep_connection = KEEP;
+
+    while (keep_connection == KEEP)
     {
-
         char reqtype;
         if (read(ti.client, &reqtype, 1) < 0)
-            HANDLE_EXIT("read(ti.client, &reqtype, 1) < 0");
+            THREAD_HANDLE_EXIT("read(ti.client, &reqtype, 1) < 0");
 
-        if (read(ti.client, &request_len, 4) < 0)
-            HANDLE_EXIT("read(client,&request_len,4)");
-
-        int bread = read(ti.client, request, request_len);
-        request[bread] = 0;
-
-        if (bread < 0)
-            HANDLE_EXIT("read(client, request, request_len) < 0");
-
-        auto args = vector<string>{"a"};
-
-
-        
-        printf("bread = %d\n",bread);
-        if (act == 0)
+        if (reqtype == requestType::CLIENT_REQUEST)
         {
-            char type = responseType::REDIRECT;
-            if (write(ti.client, &type, 1) < 0)
-                HANDLE_EXIT("write(client, &type, 1) < 0\n");
+            if (read(ti.client, &request_len, 4) < 0)
+                THREAD_HANDLE_EXIT("read(client,&request_len,4)");
 
-            u32 redirect_ip, redirect_port;
-            redirect_ip = inet_addr((ipString));
-            redirect_port = htons(atoi(portString));
+            int bread = read(ti.client, request, request_len);
+            request[bread] = 0;
 
-            if (write(ti.client, &redirect_ip, 4) < 0)
-                HANDLE_EXIT("write(client, &redirect_ip, 4) < 0");
+            if (bread < 0)
+                THREAD_HANDLE_EXIT("read(client, request, request_len) < 0");
 
-            if (write(ti.client, &redirect_port, 4) < 0)
-                HANDLE_EXIT("write(client, &redirect_port, 4) < 0");
+            auto args = parseCommand(request);
 
-            close(ti.client);
+            keep_connection = try_serve_client(ti.client, args);
+        }
+        else  if (reqtype == requestType::END_CONNECTION){
 
-            printf("received\n%s\nfrom client, but had to redirect to %d(%s):%s\n", request, ntohl(redirect_ip), ipString, portString);
-            return nullptr;
         }
         else
         {
-            sprintf(response, "successfully received request");
-            response_len = strlen(response);
-            char type = responseType::OK;
-            if (write(ti.client, &type, 1) < 0)
-                HANDLE_EXIT("write(client, &type, 1) < 0\n");
-
-            if (write(ti.client, &response_len, 4) < 0)
-                HANDLE_EXIT("write(client, &response_len, 4) < 0\n");
-
-            if (write(ti.client, response, response_len) < 0)
-                HANDLE_EXIT("write(client, response, response_len) < 0\n");
-            printf("Received following commands arguments\n");fflush(stdout);
-            for (auto &s : args )
-            {
-                printf("%s\n",s.c_str());
-            }
+            // request from peer
         }
     }
     return (NULL);
 };
-
 
 vector<string> parseCommand(const string &command)
 {
@@ -157,4 +125,108 @@ vector<string> parseCommand(const string &command)
     }
 
     return arguments;
+}
+
+int redirect_to(int client, u32 redirect_ip, u32 redirect_port)
+{
+
+    char type = responseType::REDIRECT;
+    if (write(client, &type, 1) < 0)
+        THREAD_HANDLE_EXIT("write(client, &type, 1) < 0 in redirect_to\n");
+
+    if (write(client, &redirect_ip, 4) < 0)
+        THREAD_HANDLE_EXIT("write(client, &redirect_ip, 4) < 0");
+
+    if (write(client, &redirect_port, 4) < 0)
+        THREAD_HANDLE_EXIT("write(client, &redirect_port, 4) < 0");
+
+    close(client);
+
+    return 0;
+}
+int serve_locally(int client, responseType type, char *response)
+{
+    int response_len = strlen(response);
+
+    if (write(client, &type, 1) < 0)
+        THREAD_HANDLE_EXIT("write(client, &type, 1) < 0 in serve_locally\n");
+
+    if (write(client, &response_len, 4) < 0)
+        THREAD_HANDLE_EXIT("write(client, &response_len, 4) < 0\n");
+
+    if (write(client, response, response_len) < 0)
+        THREAD_HANDLE_EXIT("write(client, response, response_len) < 0\n");
+
+    fflush(stdout);
+    return 0;
+}
+char try_serve_client(int client, vector<string> args)
+{
+    char resp_type;
+    char response[RESPONSE_MAXLEN] = "";
+    int len = args.size();
+    string &command = args[0];
+
+
+    if (len < 1)
+    {
+        resp_type = responseType::UNRECOGNIZED;
+    }
+    else
+    {
+        if (command.compare("get") == 0)
+        {
+            if (len < 2)
+            {
+                resp_type = responseType::UNRECOGNIZED;
+            }
+            sprintf(response, "Recognized request for fetching the value of a key(%s)", args[1].c_str());
+        }
+        else if (command.compare("insert") == 0)
+        {
+            if (len < 3)
+            {
+                resp_type = responseType::UNRECOGNIZED;
+            }
+            sprintf(response, "Recognized request for insertion of the (%s,%s) pair", args[1].c_str(), args[2].c_str());
+        }
+        else if (command.compare("delete") == 0)
+          {
+            if (len < 2)
+            {
+                resp_type = responseType::UNRECOGNIZED;
+            }
+            sprintf(response, "Recognized request for deleting the key(%s)", args[1].c_str());
+        }
+    }
+    
+    printf("Treating clinet on socket %d, response : %d, his args:\n",client,resp_type);fflush(stdout);
+    for (auto &s : args)
+    {
+        printf("%s, ",s.c_str());
+    }
+    printf("\n");
+
+    if (resp_type == responseType::UNRECOGNIZED)
+    {
+        if (write(client, &resp_type, 1) < 0)
+            THREAD_HANDLE_EXIT("write(client, &type, 1) < 0 in try_Serve_client\n");
+        return KEEP;
+    }
+    else
+    {
+        serve_locally(client, responseType::OK, response);
+        return KEEP;
+    }
+
+    char redirect_decision = 0;
+    u32 redirect_ip, redirect_port;
+
+    if (redirect_decision == 1)
+    {
+        redirect_to(client, redirect_ip, redirect_port);
+        printf("Can't serve locally, redirecting client to %s:%d\n", u32_to_string(redirect_ip).c_str(), ntohs(redirect_port));
+        close(client);
+        return STOP_CONNECTION;
+    }
 }

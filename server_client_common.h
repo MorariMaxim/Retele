@@ -1,4 +1,4 @@
-#include <arpa/inet.h> 
+#include <arpa/inet.h>
 #include <csignal>
 #include <errno.h>
 #include <iomanip>
@@ -22,7 +22,8 @@
 enum responseType
 {
     REDIRECT,
-    OK
+    OK,
+    UNRECOGNIZED
 };
 
 enum requestType
@@ -31,14 +32,23 @@ enum requestType
     GET_PREDECESSOR,
     FIND_SUCCESSOR,
     NOTIFICATION,
-    CLIENT_REQUEST
+    CLIENT_REQUEST,
+    END_CONNECTION
 
 };
+
 #define HANDLE_EXIT(message) \
     do                       \
     {                        \
         perror(message);     \
         exit(errno);         \
+    } while (0)
+#define THREAD_HANDLE_EXIT(message) \
+    do                              \
+    {                               \
+        perror(message);            \
+        pthread_exit(NULL);         \
+                                    \
     } while (0)
 
 #define HANDLE_CONTINUE(message) \
@@ -49,6 +59,8 @@ enum requestType
     } while (0)
 #define REQUEST_MAXLEN 4096
 #define RESPONSE_MAXLEN 4096
+#define KEEP 1
+#define STOP_CONNECTION 0
 
 using namespace std;
 
@@ -71,5 +83,5 @@ typedef struct threadInfo
     }
     std::cout << std::endl;
 }*/
- 
- vector<string> parseCommand(const string &command);
+
+vector<string> parseCommand(const string &command);
