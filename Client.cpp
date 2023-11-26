@@ -13,7 +13,7 @@ int main(int argc, char *argv[])
  
 
     std::signal(SIGPIPE, SIG_IGN);
-    int v = 1;
+    int v = 0;
     u32 port, ip;
     if (!v)
     {
@@ -125,9 +125,10 @@ int display_response(int sd)
     if (read(sd, &response_length, 4) < 0)
         HANDLE_EXIT("error when reading response length from server.\n");
 
-    if (read(sd, response, response_length) < 0)
+    int br;
+    if ((br=read(sd, response, response_length)) < 0)
         HANDLE_EXIT("error when reading response body from server.\n");
-
+    response[br] = 0;
     printf("%s\n", response);
     fflush(stdout);
     return 0;
