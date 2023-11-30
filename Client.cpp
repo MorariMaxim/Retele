@@ -10,7 +10,6 @@ bool check_exit(char *request);
 void trim(char **str);
 int main(int argc, char *argv[])
 {
- 
 
     std::signal(SIGPIPE, SIG_IGN);
     int v = 0;
@@ -34,7 +33,7 @@ int main(int argc, char *argv[])
         ip = inet_addr(ipstring);
     }
 
-    char *request = (char*)malloc(REQUEST_MAXLEN);
+    char *request = (char *)malloc(REQUEST_MAXLEN);
     request[0] = 0;
     int request_len;
 
@@ -83,6 +82,7 @@ int main(int argc, char *argv[])
             if (read(sd, &type, 1) < 0)
                 HANDLE_EXIT("error when reading response type from server.\n");
 
+        
             if (type == responseType::REDIRECT)
             {
                 u32 redirect_ip, redirect_port;
@@ -110,7 +110,8 @@ int main(int argc, char *argv[])
             }
             else if (type == responseType::UNRECOGNIZED)
             {
-                continue;
+                printf("Unrecognized command\n");
+                fflush(stdout);
             }
         }
     }
@@ -126,7 +127,7 @@ int display_response(int sd)
         HANDLE_EXIT("error when reading response length from server.\n");
 
     int br;
-    if ((br=read(sd, response, response_length)) < 0)
+    if ((br = read(sd, response, response_length)) < 0)
         HANDLE_EXIT("error when reading response body from server.\n");
     response[br] = 0;
     printf("%s\n", response);
@@ -169,7 +170,7 @@ bool check_exit(char *request)
     return 0;
 }
 void trim(char **str)
-{    
+{
     char *start = *str;
     while (*start == ' ')
     {
@@ -182,6 +183,6 @@ void trim(char **str)
     {
         end--;
     }
-    
+
     *(end + 1) = 0;
 }

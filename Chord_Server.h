@@ -17,7 +17,7 @@ public:
 
     u32 ip;
     u32 id;
-    bool operator==(const endpoint &other)
+    bool operator==(const endpoint &other) const
     {
         if (port != other.port)
             return 0;
@@ -27,12 +27,22 @@ public:
             return 0;
         return 1;
     }
+    bool operator!=(const endpoint &other) const
+    {
+        return !(*this == other);
+    }
     endpoint &operator=(const endpoint &other)
     {
         port = other.port;
         ip = other.ip;
         id = other.id;
         return *this;
+    }
+    endpoint(u32 ip_, u32 port_, u32 id_)
+    {
+        ip = ip_;
+        port = port_;
+        id = id_;
     }
 };
 
@@ -100,13 +110,11 @@ public:
 
     bool between(u32 key, u32 start, u32 end);
 
-    u32 clockw_dist(u32 key1, u32 key2);
-
-    u32 cclockw_dist(u32 key1, u32 key2);
+    u32 distance(u32 key1, u32 key2);
 
     void notify(endpoint *successor);
 
-    void printfInfo();
+    string printInfo();
 
     int open_to_connection(u32 id, u32 port, int *sd);
     char try_serve_client(threadInfo *ti);
@@ -120,10 +128,10 @@ public:
     void serve_get_successor_request(threadInfo *ti);
     void serve_notification_request(threadInfo *ti);
 
-    void* send_find_successor_request(endpoint *to, u32 key);
-    void* send_get_predecessor_request(endpoint *to);
-    void* send_get_successor_request(endpoint *to);
-    void* send_notification_request(endpoint *to);
+    void *send_find_successor_request(endpoint *to, u32 key);
+    void *send_get_predecessor_request(endpoint *to);
+    void *send_get_successor_request(endpoint *to);
+    void *send_notification_request(endpoint *to);
 };
 
 string u32_to_string(u32 ipAddressInteger, char byte_order = NETWORK_BYTE_ORDER);

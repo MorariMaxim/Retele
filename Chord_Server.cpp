@@ -1,7 +1,7 @@
 #include "Chord_Server.h"
-
 endpoint *ChordNode::find_successor(u32 key, endpoint *original)
 {
+    char function_name_buffer_for_handle[] = "find_successor";
 
     if (this->id == key)
         return &this->address;
@@ -13,44 +13,62 @@ endpoint *ChordNode::find_successor(u32 key, endpoint *original)
 
     endpoint *to = nullptr;
 
+    thread_notify("fingers[0].address = %s; id = %d",ep2str(fingers[0].address),fingers[0].address->id);
     if (fingers[0].address && between(key, id, fingers[0].address->id))
     {
         to = fingers[0].address;
+        thread_notify("to = successor");
+        return to;
     }
     else
     {
         to = closest_preceding_node(key);
+        thread_notify("to = closest_preceding");
     }
     if (!to || this->address == *to)
         return to;
 
+    thread_notify("request find_s for %d from %s", key, ep2str(to));
     return (endpoint *)request(to, params);
 }
-
-// incomplete
 endpoint *ChordNode::closest_preceding_node(u32 key)
 {
-    for (u8 i = m_bits - 1; i >= 0; i--)
+    char function_name_buffer_for_handle[] = "closest_preceding_node";
+    u32 min_distance = mod + 2, temp;
+    u8 min_index;
+    bool found = 0;
+    for (int i = m_bits - 1; i >= 0; i--)
     {
-        if (fingers[i].address != nullptr && between(fingers[i].address->id, this->id, key))
+        if (fingers[i].address == nullptr)
+            continue;
+
+        temp = fingers[i].address->id;
+        if (between(temp, this->id, key) && distance(temp, key) < min_distance)
         {
-            return fingers[i].address;
+            min_distance = distance(temp, key);
+            min_index = i;
+            found = 1;
         }
     }
+    if (!found)
+        return nullptr;
 
-    return nullptr;
+    thread_notify("found at fingers[%d].address->id = %d, this->id = %d, key = %d, distance = %d",
+                  min_index, fingers[min_index].address->id, this->id, key, min_distance);
+    return fingers[min_index].address;
 }
 
-ChordNode::ChordNode(u32 ip_, u32 port_) : id(sha1_hash(port_, ip_)), fingers(fingerTable(id))
+ChordNode::ChordNode(u32 ip_, u32 port_) : id(sha1_hash(port_, ip_)), address(ip_, port_, this->id), fingers(fingerTable(id))
 {
     this->address.port = port_;
     this->address.ip = ip_;
     this->address.id = this->id;
     predecessor = nullptr;
-    fingers[0].address = &this->address;
+    fingers[0].address = (endpoint *)malloc(sizeof(endpoint));
+    *fingers[0].address = address;
 }
 
-ChordNode::ChordNode(u32 ip_, u32 port_, endpoint *other) : id(sha1_hash(port_, ip_)), fingers(fingerTable(id))
+ChordNode::ChordNode(u32 ip_, u32 port_, endpoint *other) : id(sha1_hash(port_, ip_)), address(ip_, port_, this->id), fingers(fingerTable(id))
 {
     this->address.port = port_;
     this->address.ip = ip_;
@@ -98,20 +116,21 @@ bool ChordNode::between(u32 key, u32 start, u32 end)
     }
 }
 
-u32 ChordNode::clockw_dist(u32 key1, u32 key2)
+u32 ChordNode::distance(u32 key1, u32 key2)
 {
-    return u32();
-}
-
-u32 ChordNode::cclockw_dist(u32 key1, u32 key2)
-{
-    return u32();
+    if (key2 >= key1)
+        return key2 - key1;
+    else
+        return mod - (key1 - key2) + 1;
 }
 
 void *stabilize(void *arg)
 {
+    char function_name_buffer_for_handle[] = "stabilize";
+    thread_notify("started");
     while (1)
     {
+        sleep(STABILIZE_PERIOD);
 
         threadInfo *ti = (threadInfo *)arg;
         ChordNode *cn = (ChordNode *)ti->chordnode;
@@ -120,76 +139,94 @@ void *stabilize(void *arg)
         params.type = requestType::GET_PREDECESSOR;
         params.from = &(cn->address);
 
-        auto s = cn->fingers[0].address;
-        if (s == nullptr)
+        auto s = *cn->fingers[0].address;
+        if (s == cn->address)
             continue;
 
-        auto x = (endpoint *)cn->request(s, params);
+        // thread_notify("sending request for predecessor from %s", ep2str(s));
 
-        if (x != nullptr && cn->between(x->id, cn->id, s->id) && x->id != cn->id && x->id != s->id)
-        {
-            s->id = x->id;
-            s->port = x->port;
-            s->ip = x->ip;
+        auto x = (endpoint *)cn->request(&s, params);
+        // if (x != nullptr && cn->between(x->id, cn->id, s->id) && x->id != cn->id && x->id != s->id)
+        if(x!=nullptr) {
+            thread_notify("x = %s,id= %d",ep2str(x),x->id);
         }
-
-        cn->notify(s);
-
-        sleep(STABILIZE_PERIOD);
+        if (x != nullptr &&
+            (cn->distance(cn->id, x->id) <
+                 cn->distance(cn->id, s.id) ||
+             *cn->fingers[0].address == cn->address) && cn->address != *x)
+        {
+            *cn->fingers[0].address = *x;
+            thread_notify("set successor to %s",ep2str(x));
+        }
+        if (*cn->fingers[0].address != cn->address)
+            cn->notify(cn->fingers[0].address);
     }
 }
 
 void *fix_fingers(void *arg)
 {
+    char function_name_buffer_for_handle[] = "fix_fingers";
+    thread_notify("started");
     while (1)
     {
+        sleep(FIX_FINGERS_PERIOD);
+
         static u32 next = 0;
 
         threadInfo *ti = (threadInfo *)arg;
         ChordNode *cn = (ChordNode *)ti->chordnode;
 
-        next = (next + 1) & mod;
+        next = (next + 1) % m_bits;
 
+        thread_notify("trying to find finger for %d, next = %d", cn->fingers[next].start, next);
         endpoint *res = cn->find_successor(cn->fingers[next].start, &cn->address);
 
+        if (res == nullptr)
+        {
+            continue;
+        }
         if (cn->fingers[next].address == nullptr)
         {
             cn->fingers[next].address = (endpoint *)malloc(sizeof(endpoint));
+            *cn->fingers[next].address = *res;
+            thread_notify("found successor of %d, %s", cn->fingers[next].start, ep2str(res));
         }
-
-        cn->fingers[next].address->id = res->id;
-        cn->fingers[next].address->ip = res->ip;
-        cn->fingers[next].address->port = res->port;
-
-        sleep(FIX_FINGERS_PERIOD);
+        else if (cn->distance(cn->fingers[next].start, res->id) <
+                 cn->distance(cn->fingers[next].start, cn->fingers[next].address->id))
+        {
+            *cn->fingers[next].address = *res;
+            thread_notify("found successor of %d, %s", cn->fingers[next].start, ep2str(res));
+        }
     }
 }
 
 void *check_predecessor(void *arg)
 {
     char function_name_buffer_for_handle[] = "check_predecessor";
+    thread_notify("started");
     while (1)
     {
+        sleep(CHECK_PREDECESSOR_PERIOD);
         threadInfo *ti = (threadInfo *)arg;
         ChordNode *cn = (ChordNode *)ti->chordnode;
 
         if (cn->predecessor == nullptr)
             continue;
-
+        // thread_notify("checking for predecessor(not null)");
         char rtype = PING;
         int sd = set_connection(htonl(cn->predecessor->ip), htons(cn->predecessor->port));
 
         if ((sd == -2) && cn->predecessor != nullptr)
         {
+            thread_notify("predecessor failed");
             free(cn->predecessor);
         }
         if (sd == -1 || sd == -3)
             continue;
 
         if (write(sd, &rtype, 1) < 0)
-            thread_handle_error_fn(0, "pinging to %s\n", ip_port_to_string(cn->predecessor->ip, cn->predecessor->port).c_str());
-
-        sleep(CHECK_PREDECESSOR_PERIOD);
+            thread_notify("pinging to %s\n", sd2str(sd));
+        // thread_notify("pinged to predecessor");
     }
     return nullptr;
 }
@@ -227,7 +264,7 @@ string print_sockaddr_in(sockaddr_in &addr)
 
 string ip_port_to_string(u32 ip, u32 port, char byte_order)
 {
-    port = byte_order == HOST_BYTE_ORDER ? htons(port) : port;
+    port = byte_order == NETWORK_BYTE_ORDER ? ntohs(port) : port;
     return u32_to_string(ip, byte_order) + ":" + to_string(port);
 }
 string sd_to_address(int sd)
@@ -250,16 +287,43 @@ string sd_to_address(int sd)
     }
 }
 
-void ChordNode::printfInfo()
+string ChordNode::printInfo()
 {
+    string info = "";
+    info.reserve(300);
 
-    printf("ChorNode info:\nid=%d, ip=%s, port=%d\n", this->id, u32_to_string(this->address.ip, HOST_BYTE_ORDER).c_str(), this->address.port);
-
-    printf("Its finger table:\n");
+    char buffer[100];
+    snprintf(buffer, 100, "ChorNode info:\nid=%d, address=%s:%d\n", this->id,
+             u32_to_string(this->address.ip, HOST_BYTE_ORDER).c_str(), this->address.port);
+    info += buffer;
+    snprintf(buffer, 100, "Its finger table:\n");
+    info += buffer;
     for (size_t i = 0; i < m_bits; i++)
     {
-        printf("%d, %d\n", fingers[i].start, fingers[i].end);
+        snprintf(buffer, 100, "[%d,%d] ", fingers[i].start, fingers[i].end);
+        info += buffer;
+        if (fingers[i].address)
+        {
+            snprintf(buffer, 100, "%s", ep2str(fingers[i].address));
+        }
+        else
+        {
+            buffer[0] = 0;
+            strcat(buffer, "void");
+        }
+        strcat(buffer, "\n");
+        info += buffer;
     }
+    if (predecessor)
+    {
+        snprintf(buffer, 100, "predecessor = %s\n", ep2str(predecessor));
+    }
+    else
+    {
+        snprintf(buffer, 100, "predecessor = void\n");
+    }
+    info += buffer;
+    return info;
 }
 void *treat_node(void *arg);
 void ChordNode::run()
@@ -269,7 +333,7 @@ void ChordNode::run()
 
     int sd;
 
-    // start_periodic_functions();
+    start_periodic_functions();
 
     open_to_connection(htonl(this->address.ip), htons(this->address.port), &sd);
 
@@ -294,7 +358,6 @@ void ChordNode::run()
 
         if (pthread_create(&ti->id, NULL, &treat_node, ti) != 0)
             HANDLE_CONTINUE("error at pthread_create(&thread_counter, NULL, &treat_node, td)");
-        printf("createad thread(%lu) for client %s\n", ti->id, print_sockaddr_in(from).c_str());
     }
 }
 
@@ -309,7 +372,9 @@ void ChordNode::serve_find_successor_request(threadInfo *ti)
         thread_handle_error_fn(1, "reading key < 0 %s\n", sd_to_address(ti->client).c_str());
 
     char rtype = responseType::OK;
+    thread_notify("key = %d", key);
     endpoint *successor = find_successor(key, &address);
+
     if (successor == nullptr)
     {
         rtype = responseType::FAIL;
@@ -325,8 +390,9 @@ void ChordNode::serve_find_successor_request(threadInfo *ti)
 
         thread_notify("sent (%s) to %s", ep2str(successor), sd2str(client));
     }
-    else {
-        thread_notify("no successor sent to %s" , sd2str(client));
+    else
+    {
+        thread_notify("no successor sent to %s", sd2str(client));
     }
 
     close(client);
@@ -352,7 +418,8 @@ void ChordNode::serve_get_predecessor_request(threadInfo *ti)
             thread_handle_error_fn(1, "write endpoint<0  to %s\n", sd2str(client));
         thread_notify("sent %s to %s", ep2str(predecessor), sd2str(client));
     }
-    else {
+    else
+    {
         thread_notify("no predecessor sent to %s", sd2str(client));
     }
 
@@ -380,7 +447,8 @@ void ChordNode::serve_get_successor_request(threadInfo *ti)
             thread_handle_error_fn(1, "write endpoint <0 to %s\n", sd2str(client));
         thread_notify("sent (%s) to %s", ep2str(fingers[0].address), sd2str(client));
     }
-    else {
+    else
+    {
         thread_notify("not successor sent to %s", sd2str(client));
     }
     close(client);
@@ -390,24 +458,32 @@ void ChordNode::serve_notification_request(threadInfo *ti)
 {
     char function_name_buffer_for_handle[] = "serve_notification_request";
     int client = ti->client;
-    endpoint notifier;
+    endpoint *notifier = (endpoint *)malloc(sizeof(endpoint));
 
     // HOST_BYTE_ORDER
-    if (read(client, &notifier, sizeof(endpoint)) < 0)
+    if (read(client, notifier, sizeof(endpoint)) < 0)
         thread_handle_error_fn(1, "read endpoint<0 from %s\n", sd2str(client));
+
+    thread_notify("notifier %s, id = %d", ep2str(notifier), notifier->id);
 
     if (predecessor == nullptr)
     {
         predecessor = (endpoint *)malloc(sizeof(endpoint));
-        *predecessor = notifier;
-        thread_notify("set predecessor to %s", ep2str(predecessor));
+        *predecessor = *notifier;
+        thread_notify("set predecessor to %s, id = %d", ep2str(predecessor), predecessor->id);
     }
-    else if (predecessor->id != notifier.id && notifier.id != id && between(notifier.id, predecessor->id, id))
+    else if (predecessor->id != notifier->id && notifier->id != id &&
+             between(notifier->id, (predecessor->id + 1) & mod, id))
     {
-        *predecessor = notifier;
-        thread_notify("set predecessor to %s", ep2str(predecessor));
+        thread_notify("old predecessor %s, id = %d", ep2str(predecessor), predecessor->id);
+        *predecessor = *notifier;
+        thread_notify("1.set predecessor to %s, id = %d", ep2str(predecessor), predecessor->id);
     }
-    
+    if (predecessor != nullptr && *fingers[0].address == address)
+    {
+        *fingers[0].address = *predecessor;
+        thread_notify("2.set successor to %s", ep2str(fingers[0].address));
+    }
     close(client);
 }
 
@@ -418,7 +494,7 @@ void *ChordNode::send_find_successor_request(endpoint *to, u32 key)
 
     int sd = set_connection(htonl(to->ip), htons(to->port));
     if (sd < 0)
-        return nullptr;
+        thread_notify("cant connect to %s", ep2str(to));
 
     // HOST_BYTE_ORDER
     if (write(sd, &type, 1) < 0)
@@ -430,8 +506,7 @@ void *ChordNode::send_find_successor_request(endpoint *to, u32 key)
         thread_handle_error_fn(1, "read rt from %s", sd2str(sd));
     if (type == responseType::FAIL)
     {
-        printf("(thread %lu) rest = fail from %s:%d during send_f_s_q",
-               pthread_self(), u32_to_string(htonl(to->ip)).c_str(), to->port);
+        thread_notify("rest = fail from %s", sd2str(sd));
         close(sd);
         return nullptr;
     }
@@ -501,12 +576,13 @@ void *ChordNode::send_get_successor_request(endpoint *to)
 void *ChordNode::send_notification_request(endpoint *to)
 {
     char function_name_buffer_for_handle[] = "send_notification_request";
-    char type = requestType::GET_SUCCESSOR;
+    char type = requestType::NOTIFICATION;
 
     int sd = set_connection(htonl(to->ip), htons(to->port));
     if (sd < 0)
         return nullptr;
 
+    thread_notify("sending");
     if (write(sd, &type, 1) < 0)
         thread_handle_error_fn(1, "sendreqt to %s", sd2str(sd));
     if (write(sd, &address, sizeof(endpoint)) < 0)
@@ -577,8 +653,38 @@ void *treat_node(void *arg)
     if (read(ti->client, &reqtype, 1) < 0)
         thread_handle_error_fn(0, "read reqtype < 0");
 
+    char notification_buffer[20] = "";
+    switch (reqtype)
+    {
+    case GET_SUCCESSOR:
+        strcat(notification_buffer, "GET_SUCCESSOR");
+        break;
+    case GET_PREDECESSOR:
+        strcat(notification_buffer, "GET_PREDECESSOR");
+        break;
+    case FIND_SUCCESSOR:
+        strcat(notification_buffer, "FIND_SUCCESSOR");
+        break;
+    case NOTIFICATION:
+        strcat(notification_buffer, "NOTIFICATION");
+        break;
+    case CLIENT_REQUEST:
+        strcat(notification_buffer, "CLIENT_REQUEST");
+        break;
+    case END_CONNECTION:
+        strcat(notification_buffer, "END_CONNECTION");
+        break;
+    case PING:
+        strcat(notification_buffer, "PING");
+        break;
+    default:
+        break;
+    }
+    //  thread_notify("reqtype = %s", notification_buffer);
+
     if (reqtype == requestType::CLIENT_REQUEST)
     {
+        printf("Created thread for client %s", sd2str(ti->client));
         cn->try_serve_client(ti);
     }
     else if (reqtype == requestType::END_CONNECTION)
@@ -601,7 +707,15 @@ void *treat_node(void *arg)
     {
         cn->serve_notification_request(ti);
     }
-    return (NULL);
+    else if (reqtype == PING)
+    {
+    }
+    else
+    {
+        thread_handle_error_fn(1, "unknown request");
+    }
+    close(ti->client);
+    pthread_exit(NULL);
 }
 
 int ChordNode::open_to_connection(u32 ip, u32 port, int *sd)
@@ -691,6 +805,15 @@ char ChordNode::try_serve_client(threadInfo *ti)
                     resp_type = responseType::UNRECOGNIZED;
                 }
                 sprintf(response, "Recognized request for deleting the key(%s)", args[1].c_str());
+            }
+            else if (command.compare("printinfo") == 0)
+            {
+                string info = printInfo();
+                sprintf(response, "%s", info.c_str());
+            }
+            else
+            {
+                resp_type = responseType::UNRECOGNIZED;
             }
         }
 

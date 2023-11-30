@@ -1,8 +1,9 @@
 #include "Chord_Server.h"
-    
- 
+
+int debug_option = 1;
+
 int main(int argc, char *argv[])
-{       
+{
     std::signal(SIGPIPE, SIG_IGN);
     if (argc < 2)
         HANDLE_EXIT("Not enough aarguments");
@@ -16,20 +17,17 @@ int main(int argc, char *argv[])
         printf("Creating a new Chord network\n");
 
         ChordNode cn(ip, port);
-
-        cn.printfInfo();
+        cout << cn.printInfo();
         cn.run();
     }
     else
     {
-        u32 other_port = atoi(argv[1]);
+        u32 other_port = atoi(argv[2]);
         printf("Joining node %d to the node %d of an existent Chord network\n", port, other_port);
 
-        endpoint other;
-        other.ip = ip;
-        other.port = other_port;
+        endpoint other(ip,other_port,0);
         ChordNode cn(ip, port, &other);
-        cn.printfInfo();
+        cout << cn.printInfo();
         cn.run();
     }
 }

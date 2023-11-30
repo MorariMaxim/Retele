@@ -1,8 +1,11 @@
+#ifndef sc_common
+#define sc_common
 #include <arpa/inet.h>
 #include <csignal>
 #include <errno.h>
 #include <iomanip>
 #include <iostream>
+#include <algorithm>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <openssl/sha.h>
@@ -39,6 +42,7 @@ enum requestType
 
 };
 
+extern int debug_option;
 #define HANDLE_EXIT(message) \
     do                       \
     {                        \
@@ -48,31 +52,34 @@ enum requestType
 
 #define CONT 0
 #define EXIT 1
-#define thread_handle_error_fn(act, message, ...)                                                                             \
-    do                                                                                                                        \
-    {                                                                                                                         \
-        char buffer_x[300];                                                                                                   \
-        snprintf(buffer_x, sizeof(buffer_x), "[%lu]error:(", pthread_self());                                                 \
-        snprintf(buffer_x + strlen(buffer_x), sizeof(buffer_x), message, ##__VA_ARGS__);                                      \
-        snprintf(buffer_x + strlen(buffer_x), sizeof(buffer_x), ") in function(%s); errno", function_name_buffer_for_handle); \
-        perror(buffer_x);                                                                                                     \
-        if (act == EXIT)                                                                                                      \
-        {                                                                                                                     \
-            pthread_exit(NULL);                                                                                               \
-        }                                                                                                                     \
-        else                                                                                                                  \
-        {                                                                                                                     \
-            continue;                                                                                                         \
-        }                                                                                                                     \
+#define thread_handle_error_fn(act, message, ...)                                                                                                \
+    do                                                                                                                                           \
+    {                                                                                                                                            \
+        char buffer_x[300];                                                                                                                      \
+        snprintf(buffer_x, sizeof(buffer_x), "[%lu]error:(", pthread_self());                                                                    \
+        snprintf(buffer_x + strlen(buffer_x), sizeof(buffer_x) - strlen(buffer_x), message, ##__VA_ARGS__);                                      \
+        snprintf(buffer_x + strlen(buffer_x), sizeof(buffer_x) - strlen(buffer_x), ") in function(%s); errno", function_name_buffer_for_handle); \
+        perror(buffer_x);                                                                                                                        \
+        if (act == EXIT)                                                                                                                         \
+        {                                                                                                                                        \
+            pthread_exit(NULL);                                                                                                                  \
+        }                                                                                                                                        \
+        else                                                                                                                                     \
+        {                                                                                                                                        \
+            continue;                                                                                                                            \
+        }                                                                                                                                        \
     } while (0)
 
-#define thread_notify(message, ...)                                                                                       \
-    do                                                                                                                    \
-    {                                                                                                                     \
-        char buffer_x[300];                                                                                               \
-        snprintf(buffer_x, sizeof(buffer_x), "[%lu]notify:(", pthread_self());                                            \
-        snprintf(buffer_x + strlen(buffer_x), sizeof(buffer_x), message, ##__VA_ARGS__);                                  \
-        snprintf(buffer_x + strlen(buffer_x), sizeof(buffer_x), ") in function(%s);\n", function_name_buffer_for_handle); \
+#define thread_notify(message, ...)                                                                                                          \
+    do                                                                                                                                       \
+    {                                                                                                                                        \
+        if (!debug_option)                                                                                                                   \
+            continue;                                                                                                                        \
+        char buffer_x[300 + RESPONSE_MAXLEN];                                                                                                \
+        snprintf(buffer_x, sizeof(buffer_x), "[%lu]notify:(", pthread_self());                                                               \
+        snprintf(buffer_x + strlen(buffer_x), sizeof(buffer_x) - strlen(buffer_x), message, ##__VA_ARGS__);                                  \
+        snprintf(buffer_x + strlen(buffer_x), sizeof(buffer_x) - strlen(buffer_x), ") in function(%s);\n", function_name_buffer_for_handle); \
+        printf("%s", buffer_x);                                                                                                              \
     } while (0)
 
 #define HANDLE_CONTINUE(message) \
@@ -90,9 +97,10 @@ enum requestType
 #define STOP_CONNECTION 0
 #define NETWORK_BYTE_ORDER 0
 #define HOST_BYTE_ORDER 1
-#define STABILIZE_PERIOD 3
-#define FIX_FINGERS_PERIOD 3
-#define CHECK_PREDECESSOR_PERIOD 3
+#define PERIOD 1
+#define STABILIZE_PERIOD PERIOD
+#define FIX_FINGERS_PERIOD PERIOD
+#define CHECK_PREDECESSOR_PERIOD PERIOD
 
 using namespace std;
 
@@ -102,3 +110,5 @@ typedef struct threadInfo
     int client;
     void *chordnode;
 } threadInfo;
+
+#endif
