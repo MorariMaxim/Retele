@@ -13,20 +13,27 @@ endpoint *ChordNode::find_successor(u32 key, endpoint *original)
 
     endpoint *to = nullptr;
 
-    thread_notify("fingers[0].address = %s; id = %d",ep2str(fingers[0].address),fingers[0].address->id);
+    thread_notify("fingers[0].address = %s; id = %d", ep2str(fingers[0].address), fingers[0].address->id);
     if (fingers[0].address && between(key, id, fingers[0].address->id))
     {
-        to = fingers[0].address;
+        endpoint *res = (endpoint *)malloc(sizeof(endpoint));
+        *res = *fingers[0].address;
         thread_notify("to = successor");
-        return to;
+        return res;
     }
     else
     {
         to = closest_preceding_node(key);
         thread_notify("to = closest_preceding");
     }
-    if (!to || this->address == *to)
-        return to;
+    if (!to)
+        return nullptr;
+    if (this->address == *to)
+    {
+        endpoint *res = (endpoint *)malloc(sizeof(endpoint));
+        *res = *to;
+        return res;
+    }
 
     thread_notify("request find_s for %d from %s", key, ep2str(to));
     return (endpoint *)request(to, params);
@@ -146,18 +153,21 @@ void *stabilize(void *arg)
         // thread_notify("sending request for predecessor from %s", ep2str(s));
 
         auto x = (endpoint *)cn->request(&s, params);
-        // if (x != nullptr && cn->between(x->id, cn->id, s->id) && x->id != cn->id && x->id != s->id)
-        if(x!=nullptr) {
-            thread_notify("x = %s,id= %d",ep2str(x),x->id);
+        if (x != nullptr)
+        {
+            thread_notify("x = %s,id= %d", ep2str(x), x->id);
         }
         if (x != nullptr &&
             (cn->distance(cn->id, x->id) <
                  cn->distance(cn->id, s.id) ||
-             *cn->fingers[0].address == cn->address) && cn->address != *x)
+             *cn->fingers[0].address == cn->address) &&
+            cn->address != *x)
         {
             *cn->fingers[0].address = *x;
-            thread_notify("set successor to %s",ep2str(x));
+            thread_notify("set successor to %s", ep2str(x));
         }
+        free(x);
+        ;
         if (*cn->fingers[0].address != cn->address)
             cn->notify(cn->fingers[0].address);
     }
@@ -197,6 +207,8 @@ void *fix_fingers(void *arg)
             *cn->fingers[next].address = *res;
             thread_notify("found successor of %d, %s", cn->fingers[next].start, ep2str(res));
         }
+        if (res != nullptr)
+            free(res);
     }
 }
 
@@ -394,7 +406,8 @@ void ChordNode::serve_find_successor_request(threadInfo *ti)
     {
         thread_notify("no successor sent to %s", sd2str(client));
     }
-
+    if (successor != nullptr)
+        free(successor);
     close(client);
 }
 
@@ -484,6 +497,7 @@ void ChordNode::serve_notification_request(threadInfo *ti)
         *fingers[0].address = *predecessor;
         thread_notify("2.set successor to %s", ep2str(fingers[0].address));
     }
+    free(notifier);
     close(client);
 }
 
