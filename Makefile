@@ -11,10 +11,10 @@ client_src = Client.cpp
 
 all: $(server) $(client)
 
-$(server): $(server_src)
+$(server): $(server_src) Chord_Server.h server_client_common.h
 	$(CC) $(CFLAGS) -o $(server) $(server_src) $(LDFLAGS)
 
-$(client): $(client_src)
+$(client): $(client_src) Chord_Server.h server_client_common.h
 	$(CC) $(CFLAGS) -o $(client) $(client_src) $(LDFLAGS)
 
 

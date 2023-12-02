@@ -21,6 +21,13 @@
 #include <unistd.h>
 #include <unordered_map>
 #include <vector>
+#include <thread>
+#include <mutex>
+#include <nlohmann/json.hpp>
+#include <fstream>
+#include <sys/stat.h>
+#include <sys/types.h>
+
 
 enum responseType
 {
@@ -38,7 +45,8 @@ enum requestType
     NOTIFICATION,
     CLIENT_REQUEST,
     END_CONNECTION,
-    PING
+    PING,
+    REQUEST_KEYS
 
 };
 
@@ -88,19 +96,27 @@ extern int debug_option;
         perror(message);         \
         continue;                \
     } while (0)
+
 #define sd2str(sd) sd_to_address(sd).c_str()
-#define ep2str(ep) ip_port_to_string(ep->ip, ep->port).c_str()
+#define ep2str(ep) (ip_port_to_string(ep->ip, ep->port) +", id = " +to_string(ep->id)).c_str()
+
+#define KEY_MAX_LEN 100
+#define VALUE_MAX_LEN 1000
 #define REQUEST_MAXLEN 4096
 #define RESPONSE_MAXLEN 4096
 #define MAX_LIST 20
+
 #define KEEP 1
 #define STOP_CONNECTION 0
 #define NETWORK_BYTE_ORDER 0
 #define HOST_BYTE_ORDER 1
+
 #define PERIOD 1
 #define STABILIZE_PERIOD PERIOD
 #define FIX_FINGERS_PERIOD PERIOD
 #define CHECK_PREDECESSOR_PERIOD PERIOD
+#define REQ_KEYS_PERIOD 5
+
 
 using namespace std;
 

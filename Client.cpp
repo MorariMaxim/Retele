@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
                 inet_ntop(AF_INET, &addr, ipString, sizeof(ipString));
 
                 printf("Redirecting to %s:%d\n", ipString, ntohs(redirect_port));
-                if (ntohl(redirect_ip) != ip || ntohl(redirect_port) != port)
+                if (ntohl(redirect_ip) != ip || ntohs(redirect_port) != port)
                 {
                     close(sd);
                     sd = set_connection_to(redirect_ip, redirect_port);
