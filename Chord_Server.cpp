@@ -908,7 +908,8 @@ char ChordNode::try_serve_client(threadInfo *ti)
 
         vector<string> args = parseCommand(request);
 
-        char resp_type = responseType::OK;
+        char resp_type = responseType::UNRECOGNIZED;
+        
         char response[RESPONSE_MAXLEN] = "";
         bzero(response, sizeof(response));
         int len = args.size();
@@ -925,6 +926,7 @@ char ChordNode::try_serve_client(threadInfo *ti)
 
         if (len == 1)
         {
+            resp_type = responseType::OK;
             if (command.compare("printinfo") == 0)
             {
                 string info = printInfo();
@@ -946,6 +948,7 @@ char ChordNode::try_serve_client(threadInfo *ti)
         } 
         if (command.compare("get") == 0)
         {
+            resp_type = responseType::OK;
             auto it = data_store.find(args[1]);
             if (it != data_store.end())
             {
@@ -958,6 +961,7 @@ char ChordNode::try_serve_client(threadInfo *ti)
         }
         else if (command.compare("insert") == 0)
         {
+            resp_type = responseType::OK;
             if (len < 3)
             {
                 sprintf(response, "insert <key> <value>");
@@ -972,6 +976,7 @@ char ChordNode::try_serve_client(threadInfo *ti)
         }
         else if (command.compare("delete") == 0)
         { 
+            resp_type = responseType::OK;
             if (len < 2)
             {
                 sprintf(response, "delete <key>");
