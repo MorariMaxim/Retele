@@ -1,6 +1,6 @@
 #include "Chord_Server.h"
 
-int debug_option = 1;
+int debug_option = 0;
 int main(int argc, char *argv[])
 { 
     std::signal(SIGPIPE, SIG_IGN);
