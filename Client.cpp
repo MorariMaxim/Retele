@@ -12,6 +12,7 @@ int send_string_to(int to, const char *from);
 int read_res_type(int from, char &store);
 int write_req_type(int from, char store);
 int redirect_to(int &sd);
+int prepare_request(char *request_buffer, char &empty_command);
 
 static u32 ip;
 static u32 port;
@@ -30,8 +31,7 @@ int main(int argc, char *argv[])
     ip = inet_addr(argv[1]);
 
     char *request = (char *)malloc(REQUEST_MAXLEN);
-    request[0] = 0;
-    int request_len;
+    request[0] = 0; 
 
     int sd = set_connection_to(ip, port);
 
@@ -42,24 +42,9 @@ int main(int argc, char *argv[])
         if (!empty_command)
             printf("Enter command : ");
         fflush(stdout);
-        bzero(request, REQUEST_MAXLEN);
-        read(0, request, REQUEST_MAXLEN);
-        if (request[strlen(request) - 1] == '\n')
-            request[strlen(request) - 1] = 0;
 
-        trim(&request);
-        check_exit(request);
-
-        request_len = strlen(request);
-
-        if (request_len == 0)
-        {
-            empty_command = 1;
-            printf("\n");
+        if (prepare_request(request, empty_command) != 1)
             continue;
-        }
-        else
-            empty_command = 0;
 
         char type = responseType::REDIRECT;
         char reqtype = requestType::CLIENT_REQUEST;
@@ -141,6 +126,7 @@ bool check_exit(char *request)
 
     return 0;
 }
+
 void trim(char **str)
 {
     char *start = *str;
@@ -161,17 +147,17 @@ void trim(char **str)
 
 int read_res_type(int from, char &store)
 {
-    if (write(from, &store, 1) <= 0)
-        HANDLE_EXIT("error when sending request to server.\n");
-
+    if (read(from, &store, 1) < 0)
+        HANDLE_EXIT("error when reading response type from server.\n");
     return 0;
 }
 
 int write_req_type(int to, char store)
 {
 
-    if (read(to, &store, 1) < 0)
-        HANDLE_EXIT("error when reading response type from server.\n");
+    if (write(to, &store, 1) <= 0)
+        HANDLE_EXIT("error when sending request to server.\n");
+
     return 0;
 }
 
@@ -198,6 +184,29 @@ int redirect_to(int &sd)
         sd = set_connection_to(redirect_ip, redirect_port);
     }
     return 0;
+}
+
+int prepare_request(char *request, char &empty_command)
+{
+    bzero(request, REQUEST_MAXLEN);
+    read(0, request, REQUEST_MAXLEN);
+    if (request[strlen(request) - 1] == '\n')
+        request[strlen(request) - 1] = 0;
+
+    trim(&request);
+    check_exit(request);
+
+    int request_len = strlen(request);
+
+    if (request_len == 0)
+    {
+        empty_command = 1;
+        printf("\n");
+        return 0;
+    }
+    else
+        empty_command = 0;
+    return 1;
 }
 
 int send_string_to(int to, const char *from)
