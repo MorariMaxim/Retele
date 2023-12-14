@@ -8,30 +8,26 @@ int set_connection_to(u32 ip, u32 port);
 int display_response(int sd);
 bool check_exit(char *request);
 void trim(char **str);
+int send_string_to(int to, const char *from);
+int read_res_type(int from, char &store);
+int write_req_type(int from, char store);
+int redirect_to(int &sd);
+
+static u32 ip;
+static u32 port;
+
 int main(int argc, char *argv[])
 {
 
     std::signal(SIGPIPE, SIG_IGN);
-    int v = 0;
-    u32 port, ip;
-    if (!v)
+    if (argc < 3)
     {
-        if (argc < 3)
-        {
-            printf("%s <server_aaddress> <port>\n", argv[0]);
-            return -1;
-        }
-        port = htons(atoi(argv[2]));
-        ip = inet_addr(argv[1]);
+        printf("%s <server_aaddress> <port>\n", argv[0]);
+        return -1;
     }
-    else
-    {
-        char ipstring[] = "127.0.0.1";
-        char portstring[] = "2025";
 
-        port = htons(atoi(portstring));
-        ip = inet_addr(ipstring);
-    }
+    port = htons(atoi(argv[2]));
+    ip = inet_addr(argv[1]);
 
     char *request = (char *)malloc(REQUEST_MAXLEN);
     request[0] = 0;
@@ -70,39 +66,15 @@ int main(int argc, char *argv[])
         while (type == responseType::REDIRECT)
         {
 
-            if (write(sd, &reqtype, 1) <= 0)
-                HANDLE_EXIT("error when sending request to server.\n");
+            write_req_type(sd, reqtype);
 
-            if (write(sd, &request_len, 4) <= 0)
-                HANDLE_EXIT("error when sending request to server.\n");
+            send_string_to(sd, request);
 
-            if (write(sd, request, request_len) <= 0)
-                HANDLE_EXIT("error when sending request to server.\n");
+            read_res_type(sd, type);
 
-            if (read(sd, &type, 1) < 0)
-                HANDLE_EXIT("error when reading response type from server.\n");
-
-        
             if (type == responseType::REDIRECT)
             {
-                u32 redirect_ip, redirect_port;
-                if (read(sd, &redirect_ip, 4) < 0)
-                    HANDLE_EXIT("error when reading redirect server address .\n");
-                if (read(sd, &redirect_port, 4) < 0)
-                    HANDLE_EXIT("error when reading redirect server address .\n");
-
-                struct in_addr addr;
-                addr.s_addr = ip;
-                char ipString[INET_ADDRSTRLEN];
-
-                inet_ntop(AF_INET, &addr, ipString, sizeof(ipString));
-
-                printf("Redirecting to %s:%d\n", ipString, ntohs(redirect_port));
-                if (ntohl(redirect_ip) != ip || ntohs(redirect_port) != port)
-                {
-                    close(sd);
-                    sd = set_connection_to(redirect_ip, redirect_port);
-                }
+                redirect_to(sd);
             }
             else if (type == responseType::OK)
             {
@@ -185,4 +157,59 @@ void trim(char **str)
     }
 
     *(end + 1) = 0;
+}
+
+int read_res_type(int from, char &store)
+{
+    if (write(from, &store, 1) <= 0)
+        HANDLE_EXIT("error when sending request to server.\n");
+
+    return 0;
+}
+
+int write_req_type(int to, char store)
+{
+
+    if (read(to, &store, 1) < 0)
+        HANDLE_EXIT("error when reading response type from server.\n");
+    return 0;
+}
+
+int redirect_to(int &sd)
+{
+    u32 redirect_ip, redirect_port;
+
+    if (read(sd, &redirect_ip, 4) < 0)
+        HANDLE_EXIT("error when reading redirect server address .\n");
+    if (read(sd, &redirect_port, 4) < 0)
+        HANDLE_EXIT("error when reading redirect server address .\n");
+
+    struct in_addr addr;
+    addr.s_addr = ip;
+    char ipString[INET_ADDRSTRLEN];
+
+    inet_ntop(AF_INET, &addr, ipString, sizeof(ipString));
+
+    printf("Redirecting to %s:%d\n", ipString, ntohs(redirect_port));
+
+    if (ntohl(redirect_ip) != ip || ntohs(redirect_port) != port)
+    {
+        close(sd);
+        sd = set_connection_to(redirect_ip, redirect_port);
+    }
+    return 0;
+}
+
+int send_string_to(int to, const char *from)
+{
+    char function_name_buffer_for_handle[] = "send_string_to";
+    int len = strlen(from);
+
+    if (write(to, &len, 4) < 0)
+        thread_handle_error_fn(1, "sending len <0");
+
+    if (write(to, from, len) < 0)
+        thread_handle_error_fn(1, "sending string < 0");
+
+    return 0;
 }
