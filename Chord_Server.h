@@ -17,33 +17,10 @@ public:
 
     u32 ip;
     u32 id;
-    bool operator==(const endpoint &other) const
-    {
-        if (port != other.port)
-            return 0;
-        if (ip != other.ip)
-            return 0;
-        if (id != other.id)
-            return 0;
-        return 1;
-    }
-    bool operator!=(const endpoint &other) const
-    {
-        return !(*this == other);
-    }
-    endpoint &operator=(const endpoint &other)
-    {
-        port = other.port;
-        ip = other.ip;
-        id = other.id;
-        return *this;
-    }
-    endpoint(u32 ip_, u32 port_, u32 id_)
-    {
-        ip = ip_;
-        port = port_;
-        id = id_;
-    }
+    bool operator==(const endpoint &other) const;
+    bool operator!=(const endpoint &other) const;
+    endpoint &operator=(const endpoint &other);
+    endpoint(u32 ip_, u32 port_, u32 id_);
 };
 
 class ChordNode;
@@ -57,25 +34,11 @@ class fingerTable
 
     finger fingers[m_bits];
 
-    fingerTable(u32 id)
-    {
-        u32 x = 1;
-        for (size_t i = 0; i < m_bits; i++)
-        {
-            fingers[i].start = (id + x) & mod;
-            x <<= 1;
-            fingers[i].end = (id + x - 1) & mod;
-        }
-    }
+    fingerTable(u32 id);
     friend class ChordNode;
 
 public:
-    finger &operator[](u_char index)
-    {
-        if (index >= m_bits)
-            return fingers[0];
-        return fingers[index];
-    }
+    finger &operator[](u_char index);
 };
 class requestParams
 {
@@ -107,74 +70,22 @@ public:
     std::unordered_map<std::string, std::string> keys;
     string data_store_path;
 
-    data_store_(string address)
-    {
-        data_store_path = "./data_store/" + address;
-        if (!directory_exists(data_store_path.c_str()))
-        {
-            if (create_directory(data_store_path.c_str()))
-            {
-            }
-            else
-            {
-                fprintf(stderr, "error creating %s", data_store_path.c_str());
-                exit(0);
-            }
-        }
-    }
-    std::string &operator[](const std::string &key)
-    {
-        return keys[key];
-    }
+    data_store_(string address);
 
-    unique_lock<std::mutex> lock_data_store()
-    {
-        unique_lock<std::mutex> lock(data_store_mutex);
-        return lock;
-    }
-    map::iterator begin()
-    {
-        return keys.begin();
-    }
+    void retrieve_saved_keys();
 
-    map::iterator end()
-    {
-        return keys.end();
-    }
+    std::string &operator[](const std::string &key);
 
-    map::iterator find(const string &s)
-    {
-        return keys.find(s);
-    }
+    unique_lock<std::mutex> lock_data_store();
+    map::iterator begin();
 
-    map::iterator erase(map::iterator &it)
-    {
-        auto dslock = lock_data_store();
-        string output_file = path_from_key(it->first);
-        remove(output_file.c_str());
-        dslock.unlock();
-        return keys.erase(it);
-    }
-    void insert(const string &key, const string &value)
-    {
-        auto dslock = lock_data_store();
-        keys[key] = value;
-        string output_file = path_from_key(key);
+    map::iterator end();
 
-        remove(output_file.c_str());
+    map::iterator find(const string &s);
 
-        json data;
-        data[key] = value;
-
-        std::ofstream outputFile(output_file);
-        outputFile << data.dump(2);
-        outputFile.close();
-        dslock.unlock();
-    }
-    string path_from_key(const string &key)
-    {
-        return data_store_path + "/" + to_string(sha1_hash(key)) + ".json";
-    }
+    map::iterator erase(map::iterator &it);
+    void insert(const string &key, const string &value);
+    string path_from_key(const string &key);
 };
 class ChordNode
 {
@@ -188,7 +99,7 @@ public:
     endpoint *predecessor;
     friend class fingerTable;
 
-    endpoint *find_successor(u32 key, endpoint *original);
+    endpoint *find_successor(u32 key );
 
     endpoint *closest_preceding_node(u32 key);
 
@@ -207,38 +118,36 @@ public:
     string printInfo();
 
     int open_to_connection(u32 id, u32 port, int *sd);
-    char try_serve_client(threadInfo *ti);
+    char try_serve_client(int client);
     int redirect_to(int client, u32 red_ip, u32 red_port);
     int serve_locally(int client, responseType type, char *response);
     void start_periodic_functions();
     void request_keys_periodic();
+    void stabilize_periodic();
+    void fix_fingers_periodic();
+    void check_predecessor_periodic();
     void run();
 
-    void serve_find_successor_request(threadInfo *ti);
-    void serve_get_predecessor_request(threadInfo *ti);
-    void serve_get_successor_request(threadInfo *ti);
-    void serve_notification_request(threadInfo *ti);
-    void serve_keys_request(threadInfo *ti);
+    void *treat_node(int client);    
+    void serve_find_successor_request(int client);
+    void serve_get_predecessor_request(int client);
+    void serve_get_successor_request(int client);
+    void serve_notification_request(int client);
+    void serve_keys_request(int client);
 
     void *send_find_successor_request(endpoint *to, u32 key);
     void *send_get_predecessor_request(endpoint *to);
     void *send_get_successor_request(endpoint *to);
     void *send_notification_request(endpoint *to);
     void *send_keys_request();
+    
+
+    void stabilize();
+    void fix_fingers();
+    void check_predecessor();
 };
 
-string u32_to_string(u32 ipAddressInteger, char byte_order = NETWORK_BYTE_ORDER);
-u32 string_to_u32(string &ip, char byte_order);
 u32 sha1_hash(u32 port_, u32 &ip);
 u32 sha1_hash(const string &s);
-void *stabilize(void *arg);
-void *fix_fingers(void *arg);
-void *check_predecessor(void *arg);
-int set_connection(u32 ip, u32 port);
-string print_sockaddr_in(sockaddr_in &addr);
-string ip_port_to_string(u32 ip, u32 port, char byte_order = HOST_BYTE_ORDER);
-string sd_to_address(int sd);
 vector<string> parseCommand(const string &command);
-int read_string_from(int from, char *into, int size);
-int send_string_to(int to, const char *from);
 #endif

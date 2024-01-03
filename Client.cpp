@@ -4,7 +4,7 @@ using namespace std;
 using u32 = uint32_t;
 
 int send_request_to(char *request, u32 ip, u32 port);
-int set_connection_to(u32 ip, u32 port);
+int set_connection(u32 ip, u32 port);
 int display_response(int sd);
 bool check_exit(char *request);
 void trim(char **str);
@@ -31,9 +31,9 @@ int main(int argc, char *argv[])
     ip = inet_addr(argv[1]);
 
     char *request = (char *)malloc(REQUEST_MAXLEN);
-    request[0] = 0; 
+    request[0] = 0;
 
-    int sd = set_connection_to(ip, port);
+    int sd = set_connection(ip, port);
 
     char running = 1;
     char empty_command = 0;
@@ -50,7 +50,6 @@ int main(int argc, char *argv[])
         char reqtype = requestType::CLIENT_REQUEST;
         while (type == responseType::REDIRECT)
         {
-
             write_req_type(sd, reqtype);
 
             send_string_to(sd, request);
@@ -76,54 +75,18 @@ int main(int argc, char *argv[])
 
 int display_response(int sd)
 {
-    int response_length;
     char response[RESPONSE_MAXLEN];
-    response[0] = 0;
-
-    if (read(sd, &response_length, 4) < 0)
-        HANDLE_EXIT("error when reading response length from server.\n");
-
-    int br;
-    if ((br = read(sd, response, response_length)) < 0)
-        HANDLE_EXIT("error when reading response body from server.\n");
-    response[br] = 0;
+    read_string_from(sd, response, RESPONSE_MAXLEN);
     printf("%s\n", response);
     fflush(stdout);
     return 0;
 }
 
-int set_connection_to(u32 ip, u32 port)
-{
-    struct sockaddr_in server;
-    int sd;
-
-    server.sin_family = AF_INET;
-    server.sin_addr.s_addr = ip;
-    server.sin_port = port;
-
-    if ((sd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
-        HANDLE_EXIT("error when calling socket().\n");
-
-    if (connect(sd, (struct sockaddr *)&server, sizeof(struct sockaddr)) == -1)
-        HANDLE_EXIT("error when calling connect()\n");
-    return sd;
-}
 
 bool check_exit(char *request)
 {
-
-    char buffer[] = "exit";
-
-    for (size_t i = 0; i < 4; i++)
-    {
-        if (request[i] == 0)
-            return 0;
-        if (request[i] != buffer[i])
-            return 0;
-    }
-    if (request[4] == ' ' || request[4] == 0)
+    if (strcmp(request, "exit") == 0)
         exit(0);
-
     return 0;
 }
 
@@ -181,7 +144,7 @@ int redirect_to(int &sd)
     if (ntohl(redirect_ip) != ip || ntohs(redirect_port) != port)
     {
         close(sd);
-        sd = set_connection_to(redirect_ip, redirect_port);
+        sd = set_connection(redirect_ip, redirect_port);
     }
     return 0;
 }
@@ -207,18 +170,4 @@ int prepare_request(char *request, char &empty_command)
     else
         empty_command = 0;
     return 1;
-}
-
-int send_string_to(int to, const char *from)
-{
-    char function_name_buffer_for_handle[] = "send_string_to";
-    int len = strlen(from);
-
-    if (write(to, &len, 4) < 0)
-        thread_handle_error_fn(1, "sending len <0");
-
-    if (write(to, from, len) < 0)
-        thread_handle_error_fn(1, "sending string < 0");
-
-    return 0;
 }

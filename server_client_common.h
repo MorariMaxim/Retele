@@ -24,6 +24,7 @@
 #include <thread>
 #include <mutex>
 #include <nlohmann/json.hpp>
+#include <filesystem>
 #include <fstream>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -97,9 +98,6 @@ extern int debug_option;
         continue;                \
     } while (0)
 
-#define sd2str(sd) sd_to_address(sd).c_str()
-#define ep2str(ep) (ip_port_to_string(ep->ip, ep->port) +", id = " +to_string(ep->id)).c_str()
-
 #define KEY_MAX_LEN 100
 #define VALUE_MAX_LEN 1000
 #define REQUEST_MAXLEN 4096
@@ -117,14 +115,20 @@ extern int debug_option;
 #define CHECK_PREDECESSOR_PERIOD PERIOD
 #define REQ_KEYS_PERIOD 5
 
+int send_string_to(int to, const char *from);
+int read_string_from(int from, char *into, int size);
+using std::string;
+using u32 = unsigned int;
+string u32_to_string(u32 ipAddressInteger, char byte_order = NETWORK_BYTE_ORDER);
+
+u32 string_to_u32(string &ip, char byte_order);
+int set_connection(u32 ip, u32 port); 
+string ip_port_to_string(u32 ip, u32 port, char byte_order = HOST_BYTE_ORDER); 
+string sd_to_address(int sd);
+
+#define sd2str(sd) sd_to_address(sd).c_str()
+#define ep2str(ep) (ip_port_to_string(ep->ip, ep->port) +", id = " +to_string(ep->id)).c_str()
 
 using namespace std;
-
-typedef struct threadInfo
-{
-    pthread_t id;
-    int client;
-    void *chordnode;
-} threadInfo;
 
 #endif

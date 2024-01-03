@@ -7,12 +7,12 @@ fi
 
 declare -i p=$1 n=$[$2-1]
 
-./PeerServer $(($p)) &
+./ServerLauncher $(($p)) &
 sleep 1
 for ((i = 0; i < n; i++)); do
-   ./PeerServer $(($p + $i+1)) $(($p + $i)) &;
+   ./ServerLauncher $(($p + $i+1)) $(($p + $i)) &;
    sleep 1
-  #./PeerServer
+  #./ServerLauncher
 done
 
-#pkill -9 -f "./PeerServer"
+#pkill -9 -f "./ServerLauncher"
