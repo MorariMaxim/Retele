@@ -1044,6 +1044,13 @@ std::string &data_store_::operator[](const std::string &key)
 }
 data_store_::data_store_(string address)
 {
+    if (!directory_exists("./data_store/"))
+    {
+        if (create_directory("./data_store/"))
+        {
+        }
+    }
+
     data_store_path = "./data_store/" + address;
     if (!directory_exists(data_store_path.c_str()))
     {
